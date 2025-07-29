@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 typedef struct {
 	uint32_t time_lo;
@@ -54,6 +55,9 @@ uint64_t data_size = 1024*1024*1;
 uint64_t image_size = 0;
 uint64_t esp_lbas, data_lbas, image_size_lbas;
 
+unsigned long crc_table[256];
+int crc_table_computed = 0;
+
 uint64_t bytes_to_lbas(const uint64_t bytes)
 {
 	return (bytes / lba_size) + (bytes % lba_size > 0 ? 1 : 0);
@@ -97,6 +101,28 @@ bool write_mbr(FILE *image)
 	return true;
 }
 
+void create_crc32_table(void)
+{
+	unsigned long c;
+	int n, k;
+
+	for (n = 0; n < 256; n++) {
+		c = (unsigned long) n;
+		for (k = 0; k < 8; k++) {
+			if (c & 1)
+				c = 0xedb88320L ^ (c >> 1);
+			else
+				c = c >> 1;
+		}
+		crc_table[n] = c;
+	}
+	crc_table_computed = 1;
+}
+
+uint32_t calcualte_crc32(void *buf, int32_t len)
+{
+}
+
 Guid new_guid(void)
 {
 	uint8_t guid_array[16] = { 0 };
@@ -123,10 +149,15 @@ Guid new_guid(void)
 	};
 
 	// TODO: fill in version bits
-	.time_hi_and_ver |= 
-	.time_hi_and_ver |=
-	.time_hi_and_ver |=
+	results.time_hi_and_ver &= ~(1 << 15);
+	results.time_hi_and_ver |= (1 << 14);
+	results.time_hi_and_ver &= ~(1 << 13); 
+	results.time_hi_and_ver &= ~(1 << 12); 
 	// TODO: fill in variant bits
+	results.clock_seq_hi_and_res |= (1 << 7);
+	results.clock_seq_hi_and_res |= (1 << 6);
+	results.clock_seq_hi_and_res &= ~(1 << 5);	
+
 	return results;
 }
 
@@ -174,6 +205,8 @@ int main(void)
 
 	image_size = esp_size + data_size + (1024*1024); // Add extra padding for GPT/MBR
 	image_size_lbas = bytes_to_lbas(image_size);
+
+	srand(time(NULL));
 
 	if (!write_mbr(image)) {
 		fprintf(stderr, "Error: could not write to protective MBR for %s.\n", image_name);
